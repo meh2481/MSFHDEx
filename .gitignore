@@ -1,0 +1,33 @@
+.directory
+wfLZEx
+
+# Object files
+*.o
+*.d
+
+# Libraries
+*.lib
+*.a
+
+# Shared objects (inc. Windows DLLs)
+*.dll
+*.so
+*.so.*
+*.dylib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# Files pertaining to compression/decompression
+*.bak
+*.bin
+*.png
+*.anb
+*.zip
+*.vol
+*.anim
+*.data
+*.xcf
+volfiles/
