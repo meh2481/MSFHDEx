@@ -87,7 +87,7 @@ typedef struct
 typedef struct
 {
 	uint32_t img;		//Image number these rect(s) come from
-	uint32_t rectStart;	//Starting rectangle for this image (rectStart = numRects on rectImg sequence end)
+	uint32_t rectStart;	//Starting rectangle for this image (rectStart = frameItem.numRects on rectImg sequence end)
 } rectImg;
 
 typedef struct
@@ -112,7 +112,7 @@ typedef struct
 typedef struct
 {
 	uint32_t img;
-	uint32_t numRects;
+	rect rc;
 } rectImgHelper;			//Cause rectImg is clunky to try to actually use
 
 
@@ -144,14 +144,14 @@ void printRect(const rect& rc)
 
 void bitFlipRect(rect& r)
 {
-	rc.ul.u = bitFlip16(rc.ul.u);
-	rc.ul.v = bitFlip16(rc.ul.v);
-	rc.ur.u = bitFlip16(rc.ur.u);
-	rc.ur.v = bitFlip16(rc.ur.v);
-	rc.bl.u = bitFlip16(rc.bl.u);
-	rc.bl.v = bitFlip16(rc.bl.v);
-	rc.br.u = bitFlip16(rc.br.u);
-	rc.br.v = bitFlip16(rc.br.v);
+	r.ul.u = bitFlip16(r.ul.u);
+	r.ul.v = bitFlip16(r.ul.v);
+	r.ur.u = bitFlip16(r.ur.u);
+	r.ur.v = bitFlip16(r.ur.v);
+	r.bl.u = bitFlip16(r.bl.u);
+	r.bl.v = bitFlip16(r.bl.v);
+	r.br.u = bitFlip16(r.br.u);
+	r.br.v = bitFlip16(r.br.v);
 }
 
 FIBITMAP* imageFromPixels(uint8_t* imgData, uint32_t width, uint32_t height)
@@ -207,18 +207,24 @@ bool splitFiles(const char* cFilename)
 	animHeader ah;
 	memcpy(&ah, fileData, sizeof(animHeader));
 	
-	//Grab image header
-	imgHeader ih;
-	memcpy(&ih, &fileData[ah.imageDataPtr], sizeof(imgHeader));
+	//grab animEntries
+	vector<animEntry> animEntries;
+	for(int i = 0; i < ah.numAnims; i++)
+	{
+		animEntry ae;
+		memcpy(&ae, &fileData[ah.animListOffset+i*sizeof(animEntry)], sizeof(animEntry));
+		
+		animEntries.push_back(ae);
+	}
 	
 	//Grab animNumLists
-	vector<animNumList> m_animNums; //bleh why is this even
+	vector<animNumList> animNums;
 	for(int i = 0; i < ah.numFrames; i++)
 	{
 		animNumList anl;
 		memcpy(&anl, &fileData[ah.animListPtr+i*sizeof(animNumList)], sizeof(animNumList));
 		
-		m_animNums.push_back(anl);
+		animNums.push_back(anl);
 	}
 	
 	//Grab frameItemPtrLists
@@ -233,7 +239,7 @@ bool splitFiles(const char* cFilename)
 	
 	//Grab frameItems
 	vector<frameItem> fiItems;
-	vector< vector<rect> > fiRects;
+	vector< vector<rectImgHelper> > fiRects;
 	for(int i = 0; i < ah.numListItems; i++)
 	{
 		frameItemPtrList fipl = fiPointers[i];
@@ -241,7 +247,7 @@ bool splitFiles(const char* cFilename)
 		
 		memcpy(&fi, &fileData[fipl.fiOffset], sizeof(frameItem));
 		
-		cout << "FrameItem " << i << endl;
+		//cout << "FrameItem " << i << endl;
 		vector<rect> fiRect;
 		for(int j = 0; j < fi.numRects; j++)
 		{
@@ -250,18 +256,62 @@ bool splitFiles(const char* cFilename)
 			bitFlipRect(r);	//Make sure uv coordinates are correct...			
 			
 			//DEBUG: Figure out how these work...
-			printRect(r);
-			cout << endl;
+			//printRect(r);
+			//cout << endl;
 			fiRect.push_back(r);
 			
 			//TODO: Handle rect rotation...
 		}
-		fiRects.push_back(fiRect);
 		
+		//Figure out what images these rects are from
+		//Pull in rectImgs
+		vector<rectImg> rcImgs;
+		rectImg ri;
+		ri.rectStart = 0;
+		for(int j = 0; ri.rectStart < fi.numRects; j++)
+		{
+			memcpy(&ri, &fileData[fipl.fiOffset+sizeof(fi)+j*sizeof(rectImg)], sizeof(rectImg));
+			rcImgs.push_back(ri);
+		}
+		
+		//Fill in which rects go to which images
+		vector<rectImgHelper> rih;
+		int k = 0;
+		//Loop per rectImg
+		for(int j = 0; j < rcImgs.size()-1; j++)
+		{
+			//Pull all rects in from this image
+			for(; k < rcImgs[j+1].rectStart; k++)
+			{
+				rectImgHelper help;
+				help.img = rcImgs[j].img;
+				help.rc = fiRect[k];
+				rih.push_back(help);
+			}
+		}
+		
+		fiRects.push_back(rih);
+		fiItems.push_back(fi);
 	}
 	
+	/*/DEBUG: Make sure these are correct...
+	for(int i = 0; i < fiRects.size(); i++)
+	{
+		cout << "Frame Item: " << i << endl;
+		for(int j = 0; j < fiRects[i].size(); j++)
+		{
+			cout << "img " << fiRects[i][j].img << " rect: ";
+			printRect(fiRects[i][j].rc);
+			cout << endl;
+		}
+	}*/
+	
+	//Grab image header
+	imgHeader ih;
+	memcpy(&ih, &fileData[ah.imageDataPtr], sizeof(imgHeader));
 	
 	//Grab image data
+	vector<FIBITMAP*> images;
 	for(int i = 0; i < ih.numPieces; i++)
 	{
 		imgDataPtr idp;
@@ -270,14 +320,23 @@ bool splitFiles(const char* cFilename)
 		uint32_t imgSize = 1 << (idp.size);
 		
 		FIBITMAP* result = imageFromPixels(&fileData[ah.imageDataPtr + idp.offset], imgSize, imgSize);
-		ostringstream oss;
+		images.push_back(result);
+		/*ostringstream oss;
 		oss << "output/" << sName << '_' << i << ".png";
 		cout << "Saving " << oss.str() << endl;
 		
 		FreeImage_Save(FIF_PNG, result, oss.str().c_str());
-		FreeImage_Unload(result);
+		FreeImage_Unload(result);*/
 	}
 	
+	//Now we've got everything we need. Piece together some images!
+	//TODO: Stitch together by animations. For now, we just want some images out so we know we did it correctly
+	
+	
+	
+	//Free leftover data
+	for(vector<FIBITMAP*>::iterator i = images.begin(); i != images.end(); i++)
+		FreeImage_Unload(*i);
 	free(fileData);
 	return true;
 }
