@@ -23,11 +23,11 @@ typedef struct
 	uint32_t unk;				//0
 	uint32_t headerSz;			//38
 	uint32_t numAnims;
-	uint32_t animListOffset;	//point to list of numAnims animEntries
+	uint32_t animListOffset;	//point to animEntry[numAnims]
 	uint32_t numFrames;
 	uint32_t numListItems;
-	uint32_t animListPtr;		//Point to animNumList[numFrames], then frameItemPtrList[numListItems] immediately following.
-	uint32_t somePtr_;			//Maybe a pointer to something else?
+	uint32_t animListPtr;		//Point to animNumList[numFrames]
+	uint32_t frameItemListPtr;	//Point to frameItemPtrList[numListItems]
 	uint32_t imageDataPtr;		//point to imgHeader
 	
 	uint32_t spriteMinX;
@@ -41,7 +41,7 @@ typedef struct
 	uint32_t namePtr;	//Offset from start of file to animation name
 	uint32_t nameHash_;	//Maybe?
 	float	 unk1;		//1.0f
-	uint32_t frameStart;	//Starting frame of animation	(TODO: animNumList or frameItemPtrList?)
+	uint32_t frameStart;	//Starting frame of animation (animNumList, that is)
 	uint32_t frameEnd;		//Ending frame of animation
 	int32_t  unk2[2];
 	uint32_t unk3[2];
@@ -64,9 +64,9 @@ typedef struct
 
 typedef struct
 {
-	uint32_t animNum;	//Starts at 0, increases by one each time
-	uint32_t unk;
-	int32_t  unk1;
+	uint32_t frameItem;	//The frameItem number this frame uses (range: 0 to numListItems-1)
+	int32_t  xOffset;	//Possibly; I don't have a better guess
+	int32_t  yOffset;
 } animNumList;
 
 typedef struct
