@@ -105,6 +105,18 @@ typedef struct
 
 
 //------------------------------
+// Helper structs
+//------------------------------
+
+
+typedef struct
+{
+	uint32_t img;
+	uint32_t numRects;
+} rectImgHelper;			//Cause rectImg is clunky to try to actually use
+
+
+//------------------------------
 // Helper functions
 //------------------------------
 
