@@ -111,6 +111,8 @@ typedef struct
 
 typedef struct
 {
+	float rotAmt;
+	bool bFlip;
 	uint32_t img;
 	rect rc;
 } rectImgHelper;			//Cause rectImg is clunky to try to actually use
@@ -152,6 +154,59 @@ void bitFlipRect(rect& r)
 	r.bl.v = bitFlip16(r.bl.v);
 	r.br.u = bitFlip16(r.br.u);
 	r.br.v = bitFlip16(r.br.v);
+}
+
+void fixVec(vec& v, uint32_t finalW, uint32_t finalH, int32_t imgSize)
+{
+	v.y = finalH - v.y;
+	int32_t tmpx = floorf((float)imgSize*(float)v.u/256.0f + imgSize);
+	int32_t tmpy = floorf((float)imgSize*(float)v.v/256.0f + imgSize);
+	v.u = tmpx;
+	v.v = tmpy;
+}
+
+void fixRect(rectImgHelper& rcHelp, uint32_t finalW, uint32_t finalH, int32_t imgSize)
+{
+	//Convert this to little endian, as it should be
+	bitFlipRect(rcHelp.rc);
+	//printRect(rcHelp.rc);
+	//cout << endl;
+	//Convert these to actual pixel values
+	fixVec(rcHelp.rc.ul, finalW, finalH, imgSize);
+	fixVec(rcHelp.rc.ur, finalW, finalH, imgSize);
+	fixVec(rcHelp.rc.bl, finalW, finalH, imgSize);
+	fixVec(rcHelp.rc.br, finalW, finalH, imgSize);
+	
+	//TODO: Rotate as needed
+	rcHelp.rotAmt = 0;
+	rcHelp.bFlip = false;
+	
+	if(rcHelp.rc.ur.u == rcHelp.rc.ul.u && rcHelp.rc.ur.v > rcHelp.rc.ul.v)	//Image is rotated CCW, flipped horiz
+	{
+		//Fix rect, and mark for rot
+		rcHelp.rotAmt = -90;
+		rcHelp.bFlip = true;
+		
+		//Flip ur and bl
+		uint16_t tempX, tempY;
+		tempX = rcHelp.rc.bl.u;
+		tempY = rcHelp.rc.bl.v;
+		rcHelp.rc.bl.u = rcHelp.rc.ur.u;
+		rcHelp.rc.bl.v = rcHelp.rc.ur.v;
+		rcHelp.rc.ur.u = tempX;
+		rcHelp.rc.ur.v = tempY;
+	}
+	else if(rcHelp.rc.ul.u > rcHelp.rc.ur.u || 
+		    rcHelp.rc.ul.u > rcHelp.rc.br.u || 
+		    rcHelp.rc.ul.u != rcHelp.rc.bl.u || 
+			rcHelp.rc.ul.v != rcHelp.rc.ur.v || 
+			rcHelp.rc.ul.v > rcHelp.rc.br.v || 
+			rcHelp.rc.ul.v > rcHelp.rc.bl.v)
+	{
+		cout << "Found another one: " << rcHelp.img << endl;
+		printRect(rcHelp.rc);
+		cout << endl;
+	}
 }
 
 FIBITMAP* imageFromPixels(uint8_t* imgData, uint32_t width, uint32_t height)
@@ -253,7 +308,6 @@ bool splitFiles(const char* cFilename)
 		{
 			rect r;
 			memcpy(&r, &fileData[fipl.fiOffset+fi.rectStartOffset+j*sizeof(rect)], sizeof(rect));
-			bitFlipRect(r);	//Make sure uv coordinates are correct...			
 			
 			//DEBUG: Figure out how these work...
 			//printRect(r);
@@ -321,17 +375,83 @@ bool splitFiles(const char* cFilename)
 		
 		FIBITMAP* result = imageFromPixels(&fileData[ah.imageDataPtr + idp.offset], imgSize, imgSize);
 		images.push_back(result);
-		/*ostringstream oss;
-		oss << "output/" << sName << '_' << i << ".png";
+		ostringstream oss;
+		oss << "output/" << sName << "data_" << i << ".png";
 		cout << "Saving " << oss.str() << endl;
 		
 		FreeImage_Save(FIF_PNG, result, oss.str().c_str());
-		FreeImage_Unload(result);*/
+		//FreeImage_Unload(result);
 	}
 	
 	//Now we've got everything we need. Piece together some images!
 	//TODO: Stitch together by animations. For now, we just want some images out so we know we did it correctly
+	//Convert rectangles to proper format
+	vector<vec> imgFinalSizes;
+	for(int i = 0; i < fiRects.size(); i++)
+	{
+		//Get final image w/h for this
+		vec sz;
+		sz.x = sz.y = 0;
+		for(int j = 0; j < fiRects[i].size(); j++)
+		{
+			sz.x = max(sz.x, (uint16_t)(fiRects[i][j].rc.bl.x + 1));
+			sz.x = max(sz.x, (uint16_t)(fiRects[i][j].rc.br.x + 1));
+			sz.x = max(sz.x, (uint16_t)(fiRects[i][j].rc.ul.x + 1));
+			sz.x = max(sz.x, (uint16_t)(fiRects[i][j].rc.ur.x + 1));
+			sz.y = max(sz.y, (uint16_t)(fiRects[i][j].rc.bl.y + 1));
+			sz.y = max(sz.y, (uint16_t)(fiRects[i][j].rc.br.y + 1));
+			sz.y = max(sz.y, (uint16_t)(fiRects[i][j].rc.ul.y + 1));
+			sz.y = max(sz.y, (uint16_t)(fiRects[i][j].rc.ur.y + 1));
+		}
+		
+		//Now that we have the sizes, we can fix these rectangles to point to actual image locations
+		//cout << "Frame: " << i << endl;
+		//cout << "Img size: " << sz.x << ", " << sz.y << endl;
+		for(int j = 0; j < fiRects[i].size(); j++)
+		{
+			//printRect(fiRects[i][j].rc);
+			//cout << endl;
+			fixRect(fiRects[i][j], sz.x, sz.y, FreeImage_GetWidth(images[fiRects[i][j].img]));
+			//printRect(fiRects[i][j].rc);
+			//cout << endl;
+		}
+		imgFinalSizes.push_back(sz);
+	}
 	
+	//Stitch final images
+	for(int i = 0; i < imgFinalSizes.size(); i++)
+	{
+		//Create final image
+		FIBITMAP* result = FreeImage_Allocate(imgFinalSizes[i].x, imgFinalSizes[i].y, 32);
+		
+		//Piece images
+		for(int j = 0; j < fiRects[i].size(); j++)
+		{
+			//Grab piece
+			FIBITMAP* imgPiece = FreeImage_Copy(images[fiRects[i][j].img], fiRects[i][j].rc.ul.u, fiRects[i][j].rc.ul.v, fiRects[i][j].rc.br.u, fiRects[i][j].rc.br.v);
+			//If this needs to be rotated
+			if(fiRects[i][j].rotAmt)
+			{
+				FIBITMAP* tmp = imgPiece;
+				imgPiece = FreeImage_Rotate(imgPiece, fiRects[i][j].rotAmt);
+				FreeImage_Unload(tmp);
+			}
+			//If this needs to be flipped
+			if(fiRects[i][j].bFlip)
+				FreeImage_FlipHorizontal(imgPiece);
+			//Paste this to the proper location in the destination image
+			FreeImage_Paste(result, imgPiece, fiRects[i][j].rc.ul.x, fiRects[i][j].rc.ul.y, 255);
+			FreeImage_Unload(imgPiece);
+		}
+		
+		//Save the image
+		ostringstream oss;
+		oss << "output/" << sName << '_' << i << ".png";
+		cout << "Saving " << oss.str() << endl;
+		
+		FreeImage_Save(FIF_PNG, result, oss.str().c_str());
+		FreeImage_Unload(result);
+	}
 	
 	
 	//Free leftover data
