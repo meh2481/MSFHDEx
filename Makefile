@@ -1,6 +1,6 @@
 SHELL=C:/Windows/System32/cmd.exe
 volobjects = main.o
-animobjects = animEx.o
+animobjects = animEx.o half.o
 LIBPATH = -L./lib
 LIB = -lFreeImage
 HEADERPATH = -I./include

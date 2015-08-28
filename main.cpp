@@ -83,6 +83,13 @@ bool splitFiles(const char* cFilename)
 	if(namepos != string::npos)
 		sName.erase(0, namepos+1);
 		
+	//Create output folder	
+#ifdef _WIN32
+	CreateDirectory(TEXT(sName.c_str()), NULL);
+#else
+	int result = system("mkdir -p output");
+#endif
+		
 	//grab header
 	volHeader vh;
 	memcpy(&vh, fileData, sizeof(volHeader));
@@ -104,7 +111,7 @@ bool splitFiles(const char* cFilename)
 		cout << std::hex << ve.nameOffset << ", " << ve.dataOffset1 << ", " << ve.dataOffset2 << ", " << ve.dataSz << endl;
 		
 		ostringstream oss;
-		oss << "output/" << (char*)(&fileData[ve.nameOffset]);
+		oss << sName << "/" << (char*)(&fileData[ve.nameOffset]);
 		cout << "Saving " << oss.str() << endl;
 		
 		FILE* f = fopen(oss.str().c_str(), "wb");
@@ -133,12 +140,7 @@ bool splitFiles(const char* cFilename)
 int main(int argc, char** argv)
 {
 	//FreeImage_Initialise();
-	//Create output folder	
-#ifdef _WIN32
-	CreateDirectory(TEXT("output"), NULL);
-#else
-	int result = system("mkdir -p output");
-#endif
+	
 	list<string> sFilenames;
 	//Parse commandline
 	for(int i = 1; i < argc; i++)

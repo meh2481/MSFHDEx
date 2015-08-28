@@ -31,3 +31,4 @@ temp.cpp
 *.data
 *.xcf
 volfiles/
+out*.txt

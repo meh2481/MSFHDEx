@@ -12,6 +12,7 @@
 #include <cstring>
 #include <iomanip>
 #include "FreeImage.h"
+#include "half.h"
 using namespace std;
 
 //------------------------------
@@ -117,6 +118,12 @@ typedef struct
 	rect rc;
 } rectImgHelper;			//Cause rectImg is clunky to try to actually use
 
+typedef union
+{
+	float 		f;
+	uint32_t 	i;
+} halfFloatHelper;
+
 
 //------------------------------
 // Helper functions
@@ -127,7 +134,7 @@ int16_t bitFlip16(int16_t in)
 {
 	
 	//if(abs(in) > 16000)
-	//	return ((int16_t)(in >> 8)|(int16_t)(in << 8));
+		return ((int16_t)(in >> 8)|(int16_t)(in << 8));
 	//else
 	//	return -in;
 }
@@ -258,6 +265,12 @@ void fixVec(vec& v, uint32_t finalW, uint32_t finalH, int32_t imgSize)//, bool b
 	//	v.u++;
 	//	v.v++;
 	//}
+	
+	halfFloatHelper hf;
+	hf.i = half_to_float(v.u);
+	cout << hf.f << ", ";
+	hf.i = half_to_float(v.v);
+	cout << hf.f << endl;
 }
 
 void fixRect(rectImgHelper& rcHelp, uint32_t finalW, uint32_t finalH, int32_t imgSize)
@@ -321,8 +334,8 @@ void fixRect(rectImgHelper& rcHelp, uint32_t finalW, uint32_t finalH, int32_t im
 		//printRect(rcHelp.rc);
 		//cout << endl;
 	}*/
-	printRect(rcHelp.rc);
-	cout << endl;
+	//printRect(rcHelp.rc);
+	//cout << endl;
 }
 
 FIBITMAP* imageFromPixels(uint8_t* imgData, uint32_t width, uint32_t height)
