@@ -93,10 +93,8 @@ typedef struct
 
 typedef struct
 {
-	//xy are always positive, uv are always negative
-	//uv are big endian for some reason, and need to be bit-flipped
 	uint16_t x, y;	//Final image coordinates, from bottom left of final image to bottom left of piece (+x is right, +y is up)
-	int16_t  u, v;	//Starting image coordinates, out of -256 (u = -19 on a 128x128 image means 9 pixels from right side of image) -x is left, -y is up
+	uint16_t u, v;	//Starting image coordinates, out of 0xFFFF (divide then multiply by image size to get coordinates)
 } vec;
 
 typedef struct
@@ -128,17 +126,6 @@ typedef union
 //------------------------------
 // Helper functions
 //------------------------------
-
-
-int16_t bitFlip16(int16_t in)
-{
-	
-	//if(abs(in) > 16000)
-		return ((int16_t)(in >> 8)|(int16_t)(in << 8));
-	//else
-	//	return -in;
-}
-
 void printVec(const vec& v)
 {
 	cout << v.x << "," << v.y << " - " << v.u << "," << v.v;
@@ -155,137 +142,30 @@ void printRect(const rect& rc)
 	printVec(rc.bl);
 }
 
-void bitFlipRect(rect& r)
-{
-	/*r.ul.u = bitFlip16(r.ul.u);
-	if(r.ul.u & 0x8000)
-	{
-		r.ul.u = r.ul.u & 0x7FFF;
-		r.ul.x++;
-	}
-	r.ul.v = bitFlip16(r.ul.v);
-	if(r.ul.v & 0x8000)
-	{
-		r.ul.v = r.ul.v & 0x7FFF;
-		r.ul.y++;
-	}
-	r.ur.u = bitFlip16(r.ur.u);
-	if(r.ur.u & 0x8000)
-	{
-		r.ur.u = r.ur.u & 0x7FFF;
-		r.ur.x++;
-	}
-	r.ur.v = bitFlip16(r.ur.v);
-	if(r.ur.v & 0x8000)
-	{
-		r.ur.v = r.ur.v & 0x7FFF;
-		r.ur.y++;
-	}
-	r.br.u = bitFlip16(r.br.u);
-	if(r.br.u & 0x8000)
-	{
-		r.br.u = r.br.u & 0x7FFF;
-		r.br.x++;
-	}
-	r.br.v = bitFlip16(r.br.v);
-	if(r.br.v & 0x8000)
-	{
-		r.br.v = r.br.v & 0x7FFF;
-		r.br.y++;
-	}
-	r.bl.u = bitFlip16(r.bl.u);
-	if(r.bl.u & 0x8000)
-	{
-		r.bl.u = r.bl.u & 0x7FFF;
-		r.bl.x++;
-	}
-	r.bl.v = bitFlip16(r.bl.v);
-	if(r.bl.v & 0x8000)
-	{
-		r.bl.v = r.bl.v & 0x7FFF;
-		r.bl.y++;
-	}*/
-	r.ul.u = bitFlip16(r.ul.u);
-	r.ul.v = bitFlip16(r.ul.v);
-	r.ur.u = bitFlip16(r.ur.u);
-	r.ur.v = bitFlip16(r.ur.v);
-	r.bl.u = bitFlip16(r.bl.u);
-	r.bl.v = bitFlip16(r.bl.v);
-	r.br.u = bitFlip16(r.br.u);
-	r.br.v = bitFlip16(r.br.v);
-}
-
 void fixVec(vec& v, uint32_t finalW, uint32_t finalH, int32_t imgSize)//, bool bRoundX, bool bRoundY)
 {
 	v.y = finalH - v.y;
-	//cout << std::hex << "v.u: " << v.u << ", v.v: " << v.v << std::dec << endl;
-	float sz = imgSize-1;
-	uint32_t divX = v.u & 0xFF;
-	uint32_t posX = (uint32_t)((uint32_t)v.u & 0xFF00) >> 8;
-	uint32_t result = 0xFF;
-	while((divX & 0x80) == 0)
-	{
-		divX = divX << 1;
-		posX = posX << 1;
-		result = result << 1;
-		result = result + 1;
-	}
-	divX = result;
-	uint32_t divY = v.v & 0xFF;
-	uint32_t posY = (uint32_t)((uint32_t)v.v & 0xFF00) >> 8;
-	result = 0xFF;
-	while((divY & 0x80) == 0)
-	{
-		divY = divY << 1;
-		posY = posY << 1;
-		result = result << 1;
-		result = result + 1;
-	}
-	divY = result;
-	//cout << divX << ", " << divY << endl;
-	//cout << posX << ", " << posY << endl;
-	float posU = (float)(posX)/(float)(divX)*sz;// + 0.5f;
-	float posV = (float)(posY)/(float)(divY)*sz;// + 0.5f;
-	//const float div = 256.0f;
-	//posU = sz*posU/div+sz;
-	//posV = sz*posV/div+sz;
-	//cout << posU << ", " << posV << endl;
-	//if(bRoundX)
-	v.u = ceilf(posU);//imgSize*((float)v.u/256.0f) + imgSize;
-	//else
-	//	v.u = posU;
-	//if(bRoundY)
-	v.v = ceilf(posV);//imgSize*((float)v.v/256.0f) + imgSize;
-	//else
-	//	v.v = posV;
-	//v.u = tmpx;
-	//v.v = tmpy;
-	//if(imgSize > 256)
-	//{
-	//	v.u++;
-	//	v.v++;
-	//}
 	
-	halfFloatHelper hf;
-	hf.i = half_to_float(v.u);
-	cout << hf.f << ", ";
-	hf.i = half_to_float(v.v);
-	cout << hf.f << endl;
+	double divee = 0xFFFF;
+	double divX = v.u;
+	double divY = v.v;
+	double sz = imgSize;
+	v.u = (divX / divee * imgSize)+0.5;
+	v.v = (divY / divee * imgSize)+0.5;
+	
+	
+	//cout << v.u << ", " << v.v << endl;
 }
 
 void fixRect(rectImgHelper& rcHelp, uint32_t finalW, uint32_t finalH, int32_t imgSize)
 {
-	//Convert this to little endian, as it should be
-	//bitFlipRect(rcHelp.rc);
-	//printRect(rcHelp.rc);
-	//cout << endl;
 	//Convert these to actual pixel values
-	fixVec(rcHelp.rc.ul, finalW, finalH, imgSize);//, true, true);
-	fixVec(rcHelp.rc.ur, finalW, finalH, imgSize);//, true, false);
-	fixVec(rcHelp.rc.bl, finalW, finalH, imgSize);//, false, true);
-	fixVec(rcHelp.rc.br, finalW, finalH, imgSize);//, false, false);
+	fixVec(rcHelp.rc.ul, finalW, finalH, imgSize);
+	fixVec(rcHelp.rc.ur, finalW, finalH, imgSize);
+	fixVec(rcHelp.rc.bl, finalW, finalH, imgSize);
+	fixVec(rcHelp.rc.br, finalW, finalH, imgSize);
 	
-	//TODO: Rotate as needed
+	//Rotate as needed
 	rcHelp.rotAmt = 0;
 	rcHelp.bFlip = false;
 	
@@ -304,38 +184,6 @@ void fixRect(rectImgHelper& rcHelp, uint32_t finalW, uint32_t finalH, int32_t im
 		rcHelp.rc.ur.u = tempX;
 		rcHelp.rc.ur.v = tempY;
 	}
-	/*else if(rcHelp.rc.ul.u > rcHelp.rc.ur.u || 
-		    rcHelp.rc.ul.u > rcHelp.rc.br.u || 
-		    rcHelp.rc.ul.u != rcHelp.rc.bl.u || 
-			rcHelp.rc.ul.v != rcHelp.rc.ur.v || 
-			rcHelp.rc.ul.v > rcHelp.rc.br.v || 
-			rcHelp.rc.ul.v > rcHelp.rc.bl.v)
-	{*/
-		//cout << "Found another one: " << rcHelp.img << endl;
-		//printRect(rcHelp.rc);
-		//cout << endl;
-	/*}
-	if(rcHelp.rc.ur.x - rcHelp.rc.ul.x > rcHelp.rc.ur.u - rcHelp.rc.ul.u)
-	{
-		int32_t amt = (rcHelp.rc.ur.x - rcHelp.rc.ul.x)-(rcHelp.rc.ur.u - rcHelp.rc.ul.u);
-		//cout << amt << endl;
-		rcHelp.rc.ul.u += amt;
-		rcHelp.rc.bl.u += amt;
-		//cout << "Size mismatch x fix?: " << rcHelp.img << endl;
-		//printRect(rcHelp.rc);
-		//cout << endl;
-	}
-	if(rcHelp.rc.bl.y - rcHelp.rc.ul.y > rcHelp.rc.bl.v - rcHelp.rc.ul.v)
-	{
-		int32_t amt = (rcHelp.rc.bl.y - rcHelp.rc.ul.y) - (rcHelp.rc.bl.v - rcHelp.rc.ul.v);
-		rcHelp.rc.ul.v += amt;
-		rcHelp.rc.ur.v += amt;
-		//cout << "Size mismatch y fix?: " << rcHelp.img << endl;
-		//printRect(rcHelp.rc);
-		//cout << endl;
-	}*/
-	//printRect(rcHelp.rc);
-	//cout << endl;
 }
 
 FIBITMAP* imageFromPixels(uint8_t* imgData, uint32_t width, uint32_t height)
@@ -431,19 +279,13 @@ bool splitFiles(const char* cFilename)
 		
 		memcpy(&fi, &fileData[fipl.fiOffset], sizeof(frameItem));
 		
-		//cout << "FrameItem " << i << endl;
 		vector<rect> fiRect;
 		for(int j = 0; j < fi.numRects; j++)
 		{
 			rect r;
 			memcpy(&r, &fileData[fipl.fiOffset+fi.rectStartOffset+j*sizeof(rect)], sizeof(rect));
 			
-			//DEBUG: Figure out how these work...
-			//printRect(r);
-			//cout << endl;
 			fiRect.push_back(r);
-			
-			//TODO: Handle rect rotation...
 		}
 		
 		//Figure out what images these rects are from
@@ -477,18 +319,6 @@ bool splitFiles(const char* cFilename)
 		fiItems.push_back(fi);
 	}
 	
-	/*/DEBUG: Make sure these are correct...
-	for(int i = 0; i < fiRects.size(); i++)
-	{
-		cout << "Frame Item: " << i << endl;
-		for(int j = 0; j < fiRects[i].size(); j++)
-		{
-			cout << "img " << fiRects[i][j].img << " rect: ";
-			printRect(fiRects[i][j].rc);
-			cout << endl;
-		}
-	}*/
-	
 	//Grab image header
 	imgHeader ih;
 	memcpy(&ih, &fileData[ah.imageDataPtr], sizeof(imgHeader));
@@ -504,30 +334,24 @@ bool splitFiles(const char* cFilename)
 		
 		FIBITMAP* result = imageFromPixels(&fileData[ah.imageDataPtr + idp.offset], imgSize, imgSize);
 		images.push_back(result);
-		ostringstream oss;
-		oss << "output/" << sName << "data_" << i << ".png";
-		cout << "Saving " << oss.str() << endl;
+		//ostringstream oss;
+		//oss << "output/" << sName << "data_" << i << ".png";
+		//cout << "Saving " << oss.str() << endl;
 		
-		FreeImage_Save(FIF_PNG, result, oss.str().c_str());
+		//FreeImage_Save(FIF_PNG, result, oss.str().c_str());
 		//FreeImage_Unload(result);
 	}
 	
 	//Now we've got everything we need. Piece together some images!
 	//TODO: Stitch together by animations. For now, we just want some images out so we know we did it correctly
 	//Convert rectangles to proper format
-	
-	
-	//Get final image w/h for this
-	vec sz;
-	sz.x = sz.y = 0;
-	sz.x = -ah.spriteMinX + ah.spriteMaxX;
-	sz.y = -ah.spriteMinY + ah.spriteMaxY;
-	//cout << "Img size? : " << sz.x << ", " << sz.y << endl;
-	
 	vector<vec> imgFinalSizes;
 	for(int i = 0; i < fiRects.size(); i++)
 	{
-		/*for(int j = 0; j < fiRects[i].size(); j++)
+		//Get final image w/h for this
+		vec sz;
+		sz.x = sz.y = 0;
+		for(int j = 0; j < fiRects[i].size(); j++)
 		{
 			sz.x = max(sz.x, (uint16_t)(fiRects[i][j].rc.bl.x + 1));
 			sz.x = max(sz.x, (uint16_t)(fiRects[i][j].rc.br.x + 1));
@@ -537,19 +361,13 @@ bool splitFiles(const char* cFilename)
 			sz.y = max(sz.y, (uint16_t)(fiRects[i][j].rc.br.y + 1));
 			sz.y = max(sz.y, (uint16_t)(fiRects[i][j].rc.ul.y + 1));
 			sz.y = max(sz.y, (uint16_t)(fiRects[i][j].rc.ur.y + 1));
-		}*/
+		}
 		
 		//Now that we have the sizes, we can fix these rectangles to point to actual image locations
-		//cout << "Frame: " << i << endl;
-		//cout << "Img size: " << sz.x << ", " << sz.y << endl;
 		
 		for(int j = 0; j < fiRects[i].size(); j++)
 		{
-			//printRect(fiRects[i][j].rc);
-			//cout << endl;
 			fixRect(fiRects[i][j], sz.x, sz.y, FreeImage_GetWidth(images[fiRects[i][j].img]));
-			//printRect(fiRects[i][j].rc);
-			//cout << endl;
 		}
 		imgFinalSizes.push_back(sz);
 	}
