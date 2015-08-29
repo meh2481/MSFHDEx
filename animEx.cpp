@@ -422,10 +422,10 @@ bool splitFiles(const char* cFilename)
 				left = totalXOffset = -animNums[j].xOffset;
 			if(right < imgFinalSizes[animNums[j].item].x - animNums[j].xOffset)
 				right = imgFinalSizes[animNums[j].item].x - animNums[j].xOffset;
-			if(bottom > animNums[j].yOffset)
-				bottom = totalYOffset = animNums[j].yOffset;
-			if(top < imgFinalSizes[animNums[j].item].y + animNums[j].yOffset)
-				top = imgFinalSizes[animNums[j].item].y + animNums[j].yOffset;
+			if(bottom > -animNums[j].yOffset)
+				bottom = totalYOffset = -animNums[j].yOffset;
+			if(top < imgFinalSizes[animNums[j].item].y - animNums[j].yOffset)
+				top = imgFinalSizes[animNums[j].item].y - animNums[j].yOffset;
 		}		
 		
 		const char* cAnimName = (const char*)(&fileData[animEntries[i].namePtr]);
@@ -445,7 +445,11 @@ bool splitFiles(const char* cFilename)
 			
 			//Allocate the final image
 			FIBITMAP* finalFrameImg = FreeImage_Allocate(right-left, top-bottom, 32);
-			FreeImage_Paste(finalFrameImg, stitchedImages[animNums[j].item], -totalXOffset - animNums[j].xOffset, FreeImage_GetHeight(finalFrameImg) - imgFinalSizes[animNums[j].item].y - animNums[j].yOffset + totalYOffset, 255);
+			FreeImage_Paste(finalFrameImg, 
+							stitchedImages[animNums[j].item], 
+							-totalXOffset - animNums[j].xOffset, 
+							FreeImage_GetHeight(finalFrameImg) - imgFinalSizes[animNums[j].item].y + animNums[j].yOffset + totalYOffset, 
+							255);
 			
 			//TODO: Stitch these into sheets
 			FreeImage_Save(FIF_PNG, finalFrameImg, oss.str().c_str());
