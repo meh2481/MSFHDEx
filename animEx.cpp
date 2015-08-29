@@ -6,13 +6,13 @@
 #include <cstdio>
 #ifdef _WIN32
 	#include <windows.h>
+	//#include <Shlobj.h>
 #endif
 #include <list>
 #include <cmath>
 #include <cstring>
 #include <iomanip>
 #include "FreeImage.h"
-#include "half.h"
 using namespace std;
 
 //------------------------------
@@ -65,7 +65,7 @@ typedef struct
 
 typedef struct
 {
-	uint32_t frameItem;	//The frameItem number this frame uses (range: 0 to numListItems-1)
+	uint32_t item;	//The frameItem number this frame uses (range: 0 to numListItems-1)
 	int32_t  xOffset;	//Possibly; I don't have a better guess
 	int32_t  yOffset;
 } animNumList;
@@ -116,12 +116,6 @@ typedef struct
 	rect rc;
 } rectImgHelper;			//Cause rectImg is clunky to try to actually use
 
-typedef union
-{
-	float 		f;
-	uint32_t 	i;
-} halfFloatHelper;
-
 
 //------------------------------
 // Helper functions
@@ -152,9 +146,6 @@ void fixVec(vec& v, uint32_t finalW, uint32_t finalH, int32_t imgSize)//, bool b
 	double sz = imgSize;
 	v.u = (divX / divee * imgSize)+0.5;
 	v.v = (divY / divee * imgSize)+0.5;
-	
-	
-	//cout << v.u << ", " << v.v << endl;
 }
 
 void fixRect(rectImgHelper& rcHelp, uint32_t finalW, uint32_t finalH, int32_t imgSize)
@@ -344,6 +335,13 @@ bool splitFiles(const char* cFilename)
 	
 	//Now we've got everything we need. Piece together some images!
 	//TODO: Stitch together by animations. For now, we just want some images out so we know we did it correctly
+	
+	
+	//vec sz;
+	//sz.x = sz.y = 0;
+	//sz.x = -ah.spriteMinX + ah.spriteMaxX;
+	//sz.y = -ah.spriteMinY + ah.spriteMaxY;
+	
 	//Convert rectangles to proper format
 	vector<vec> imgFinalSizes;
 	for(int i = 0; i < fiRects.size(); i++)
@@ -373,6 +371,7 @@ bool splitFiles(const char* cFilename)
 	}
 	
 	//Stitch final images
+	vector<FIBITMAP*> stitchedImages;
 	for(int i = 0; i < imgFinalSizes.size(); i++)
 	{
 		//Create final image
@@ -398,18 +397,67 @@ bool splitFiles(const char* cFilename)
 			FreeImage_Unload(imgPiece);
 		}
 		
+		stitchedImages.push_back(result);
 		//Save the image
-		ostringstream oss;
-		oss << "output/" << sName << '_' << i << ".png";
-		cout << "Saving " << oss.str() << endl;
+		//ostringstream oss;
+		//oss << "output/" << sName << '_' << i << ".png";
+		//cout << "Saving " << oss.str() << endl;
 		
-		FreeImage_Save(FIF_PNG, result, oss.str().c_str());
-		FreeImage_Unload(result);
+		//FreeImage_Save(FIF_PNG, result, oss.str().c_str());
+		//FreeImage_Unload(result);
+	}
+	
+	//Spit out by animation
+	for(int i = 0; i < ah.numAnims; i++)
+	{
+		//Find the extents for the images in this anim
+		int left, right, top, bottom;
+		int totalXOffset, totalYOffset;
+		left = right = top = bottom = totalXOffset = totalYOffset = 0;
+		for(int j = animEntries[i].frameStart; j < animEntries[i].frameEnd; j++)
+		{
+			//animNums[j].item
+			//-y is down for these calculations, as it is in the .anim files
+			if(left > -animNums[j].xOffset)
+				left = totalXOffset = -animNums[j].xOffset;
+			if(right < imgFinalSizes[animNums[j].item].x - animNums[j].xOffset)
+				right = imgFinalSizes[animNums[j].item].x - animNums[j].xOffset;
+			if(bottom > animNums[j].yOffset)
+				bottom = totalYOffset = animNums[j].yOffset;
+			if(top < imgFinalSizes[animNums[j].item].y + animNums[j].yOffset)
+				top = imgFinalSizes[animNums[j].item].y + animNums[j].yOffset;
+		}		
+		
+		const char* cAnimName = (const char*)(&fileData[animEntries[i].namePtr]);
+		int curFrame = 1;
+		for(int j = animEntries[i].frameStart; j < animEntries[i].frameEnd; j++)
+		{
+			//Save the image
+			ostringstream oss;
+			oss << "output/" << sName;
+			CreateDirectory(TEXT(oss.str().c_str()), NULL);
+			oss << '/' << cAnimName << '/';
+			CreateDirectory(TEXT(oss.str().c_str()), NULL);
+			//SHCreateDirectoryEx( NULL, oss.str().c_str(), NULL );
+			oss << setw(3) << setfill('0') << curFrame++ << ".png";
+			//cout << "(Offset:) " << animNums[j].xOffset << ", " << animNums[j].yOffset << endl;
+			cout << "Saving " << oss.str() << endl;
+			
+			//Allocate the final image
+			FIBITMAP* finalFrameImg = FreeImage_Allocate(right-left, top-bottom, 32);
+			FreeImage_Paste(finalFrameImg, stitchedImages[animNums[j].item], -totalXOffset - animNums[j].xOffset, FreeImage_GetHeight(finalFrameImg) - imgFinalSizes[animNums[j].item].y - animNums[j].yOffset + totalYOffset, 255);
+			
+			//TODO: Stitch these into sheets
+			FreeImage_Save(FIF_PNG, finalFrameImg, oss.str().c_str());
+			FreeImage_Unload(finalFrameImg);
+		}
 	}
 	
 	
 	//Free leftover data
 	for(vector<FIBITMAP*>::iterator i = images.begin(); i != images.end(); i++)
+		FreeImage_Unload(*i);
+	for(vector<FIBITMAP*>::iterator i = stitchedImages.begin(); i != stitchedImages.end(); i++)
 		FreeImage_Unload(*i);
 	free(fileData);
 	return true;
