@@ -29,6 +29,8 @@ temp.cpp
 *.vol
 *.anim
 *.data
+*.image
 *.xcf
 volfiles/
+lookat/
 out*.txt
